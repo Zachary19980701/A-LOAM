@@ -163,32 +163,50 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
                           laserCloudIn.points[cloudSize - 1].x) +
                    2 * M_PI; //保证角度相差2pi
 
+
+    //激光雷达的几种不同情况， 保证起始点与终止点的坐标角度相差2pi
+    /*
+    不需要补偿2pi
+    起始点和结束点相差大于2pi的情况[-179, 179]，这里不需要补偿2pi，而是减去2pi
+    */
     if (endOri - startOri > 3 * M_PI)
     {
         endOri -= 2 * M_PI;
     }
+    /*
+    需要额外补偿2pi
+    起始点和终结点非常接近情况 [179, -179]， 补偿2pi之后，变化为[179, 181]。产生歧义， 当遇见这种情况时，需要额外补偿2pi
+    */
     else if (endOri - startOri < M_PI)
     {
         endOri += 2 * M_PI;
     }
+
+
     //printf("end Ori %f\n", endOri);
 
     bool halfPassed = false;
-    int count = cloudSize;
+    int count = cloudSize; //当先帧点的size
     PointType point;
     std::vector<pcl::PointCloud<PointType>> laserCloudScans(N_SCANS);
-    for (int i = 0; i < cloudSize; i++)
+    for (int i = 0; i < cloudSize; i++) //遍历点云
     {
         point.x = laserCloudIn.points[i].x;
         point.y = laserCloudIn.points[i].y;
         point.z = laserCloudIn.points[i].z;
 
-        float angle = atan(point.z / sqrt(point.x * point.x + point.y * point.y)) * 180 / M_PI;
+        float angle = atan(point.z / sqrt(point.x * point.x + point.y * point.y)) * 180 / M_PI; //计算俯仰角 angle_z
+        // atan(z/(x^2 + y^2))
+
+        //通过计算俯仰角计算激光雷达的线数
         int scanID = 0;
 
+        /*
+        多线激光雷达最低线的角度为-15°，线束之间的夹角为2°，计算得当前激光雷达线束的序号
+        */
         if (N_SCANS == 16)
         {
-            scanID = int((angle + 15) / 2 + 0.5);
+            scanID = int((angle + 15) / 2 + 0.5); 
             if (scanID > (N_SCANS - 1) || scanID < 0)
             {
                 count--;
@@ -218,6 +236,10 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
                 continue;
             }
         }
+        /*
+        Aloam的这块计算线束与硬件相关，所以只支持16、32、64线。
+        在kitti中需要计算俯仰角来判断第几根线，现在的激光雷达已经包含这个信息，不需要单独通过俯仰角来计算线数
+        */
         else
         {
             printf("wrong scan number\n");
@@ -225,7 +247,11 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
         }
         //printf("angle %f scanID %d \n", angle, scanID);
 
-        float ori = -atan2(point.y, point.x);
+        float ori = -atan2(point.y, point.x); //计算偏航角
+        /*
+        判断当前点是否过一半了，没有过一半和开始点比较计算角度，过一半和结束点比较计算角度。
+        将当前的水平角度放到开始角度和结束角度中间，计算当前点距离起始点的时间以计算畸变。
+        */
         if (!halfPassed)
         { 
             if (ori < startOri - M_PI / 2)
@@ -255,9 +281,12 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
             }
         }
 
+        // (endOri - startOri)整体角度
+        // (ori - startOri)当前距离起始点角度
+        //求当前点的比例时间
         float relTime = (ori - startOri) / (endOri - startOri);
         point.intensity = scanID + scanPeriod * relTime;
-        laserCloudScans[scanID].push_back(point); 
+        laserCloudScans[scanID].push_back(point); //将数据储存到每一根线里
     }
     
     cloudSize = count;
@@ -265,14 +294,21 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
 
     pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
     for (int i = 0; i < N_SCANS; i++)
-    { 
+    {   
+        /*
+        起始点和结束点附近计算曲率不是非常方便，因此抛弃掉起始点和终止点附近5个点的数据，不去计算这个曲率
+        */
         scanStartInd[i] = laserCloud->size() + 5;
         *laserCloud += laserCloudScans[i];
         scanEndInd[i] = laserCloud->size() - 6;
+        //使用scanStarted和scanStarted来存贮起始点和结束点的ID
     }
 
     printf("prepare time %f \n", t_prepare.toc());
 
+    //提取特征
+
+    //计算曲率
     for (int i = 5; i < cloudSize - 5; i++)
     { 
         float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x + laserCloud->points[i - 1].x - 10 * laserCloud->points[i].x + laserCloud->points[i + 1].x + laserCloud->points[i + 2].x + laserCloud->points[i + 3].x + laserCloud->points[i + 4].x + laserCloud->points[i + 5].x;
