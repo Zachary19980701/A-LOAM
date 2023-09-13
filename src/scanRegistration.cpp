@@ -34,6 +34,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+//前端配准，前端特征提取
 
 #include <cmath>
 #include <vector>
@@ -83,6 +84,10 @@ bool PUB_EACH_LINE = false;
 double MINIMUM_RANGE = 0.1; 
 
 template <typename PointT>
+
+
+//去除小于距离阈值函数
+//输入参数 点云地址， 距离阈值
 void removeClosedPointCloud(const pcl::PointCloud<PointT> &cloud_in,
                               pcl::PointCloud<PointT> &cloud_out, float thres)
 {
@@ -94,25 +99,33 @@ void removeClosedPointCloud(const pcl::PointCloud<PointT> &cloud_in,
 
     size_t j = 0;
 
+
+    //根据点云坐标xyz求平方和，判断是否小于距离阈值
     for (size_t i = 0; i < cloud_in.points.size(); ++i)
     {
         if (cloud_in.points[i].x * cloud_in.points[i].x + cloud_in.points[i].y * cloud_in.points[i].y + cloud_in.points[i].z * cloud_in.points[i].z < thres * thres)
             continue;
-        cloud_out.points[j] = cloud_in.points[i];
+        cloud_out.points[j] = cloud_in.points[i]; //保存到cloud_in中
         j++;
     }
     if (j != cloud_in.points.size())
     {
-        cloud_out.points.resize(j);
+        cloud_out.points.resize(j);  //重新resize， 不重新声明变量，节省内存空间
     }
 
     cloud_out.height = 1;
     cloud_out.width = static_cast<uint32_t>(j);
     cloud_out.is_dense = true;
+
+    //失去了点云的一些特性，从三维的点云退化到高度为1，宽度为点数目的点云值
 }
 
-void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
+
+//主函数的回调函数，点云的特征提取等主要在这个函数里面
+void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //接受点云类型，const laserCloudMSG地址指针
 {
+
+    //等待系统初始化，抛弃掉前几帧的数据不用，使用稳定后的数据建图
     if (!systemInited)
     { 
         systemInitCount++;
@@ -124,24 +137,31 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
             return;
     }
 
+
+    //变量声明
     TicToc t_whole;
     TicToc t_prepare;
     std::vector<int> scanStartInd(N_SCANS, 0);
     std::vector<int> scanEndInd(N_SCANS, 0);
 
     pcl::PointCloud<pcl::PointXYZ> laserCloudIn;
-    pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
+    pcl::fromROSMsg(*laserCloudMsg, laserCloudIn); //ROS点云类型转化为PCL数据类型
     std::vector<int> indices;
 
+
+    //去除点云中的None点
     pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
+    //去除小于距离阈值的点
     removeClosedPointCloud(laserCloudIn, laserCloudIn, MINIMUM_RANGE);
 
 
     int cloudSize = laserCloudIn.points.size();
-    float startOri = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x);
+
+    //计算起始点和结束点角度
+    float startOri = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x); 
     float endOri = -atan2(laserCloudIn.points[cloudSize - 1].y,
                           laserCloudIn.points[cloudSize - 1].x) +
-                   2 * M_PI;
+                   2 * M_PI; //保证角度相差2pi
 
     if (endOri - startOri > 3 * M_PI)
     {
@@ -458,25 +478,31 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
         ROS_WARN("scan registration process over 100ms");
 }
 
+
+//主函数
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "scanRegistration");
-    ros::NodeHandle nh;
+    ros::init(argc, argv, "scanRegistration"); //初始化ROS节点，节点名称为scanRegistration
+    ros::NodeHandle nh; //节点句柄
 
-    nh.param<int>("scan_line", N_SCANS, 16);
+    nh.param<int>("scan_line", N_SCANS, 16); //获取激光娴熟， default=16，再kitti中使用的64线
 
-    nh.param<double>("minimum_range", MINIMUM_RANGE, 0.1);
+    nh.param<double>("minimum_range", MINIMUM_RANGE, 0.1);  //设置最小有效距离，kitti中为5
 
     printf("scan line number %d \n", N_SCANS);
 
+
+    //判断一下激光雷达线数是否符合要求
     if(N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64)
     {
         printf("only support velodyne with 16, 32 or 64 scan line!");
         return 0;
     }
 
-    ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/velodyne_points", 100, laserCloudHandler);
+    ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/velodyne_points", 100, laserCloudHandler);  //订阅/velodyne_point， 执行回调函数 laserChouHandler
 
+
+    //定义发布函数
     pubLaserCloud = nh.advertise<sensor_msgs::PointCloud2>("/velodyne_cloud_2", 100);
 
     pubCornerPointsSharp = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_sharp", 100);
