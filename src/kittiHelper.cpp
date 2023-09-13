@@ -1,6 +1,6 @@
 // Author:   Tong Qin               qintonguav@gmail.com
 // 	         Shaozu Cao 		    saozu.cao@connect.ust.hk
-
+// kittiHelper 将kitti数据集转化为ROS的形式
 #include <iostream>
 #include <fstream>
 #include <iterator>
@@ -36,66 +36,73 @@ std::vector<float> read_lidar_data(const std::string lidar_data_path)
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "kitti_helper");
-    ros::NodeHandle n("~");
-    std::string dataset_folder, sequence_number, output_bag_file;
-    n.getParam("dataset_folder", dataset_folder);
+    ros::init(argc, argv, "kitti_helper"); //初始化ros node
+    ros::NodeHandle n("~"); //将命名空间重新定义为～
+    std::string dataset_folder, sequence_number, sequence_number; //初始化dataset_folder sequence_number sequence_number 的变量类型，变量类型为string
+    
+    //使用ROS的获取参数函数，获取dataset和sequence——num的参数
+    n.getParam("dataset_folder", dataset_folder); 
     n.getParam("sequence_number", sequence_number);
+
     std::cout << "Reading sequence " << sequence_number << " from " << dataset_folder << '\n';
+    
+    //初始化一个逻辑变量 to_bag
     bool to_bag;
-    n.getParam("to_bag", to_bag);
+    n.getParam("to_bag", to_bag); //获取参数
     if (to_bag)
         n.getParam("output_bag_file", output_bag_file);
-    int publish_delay;
+
+
+    int publish_delay; //发布延时
     n.getParam("publish_delay", publish_delay);
-    publish_delay = publish_delay <= 0 ? 1 : publish_delay;
+    publish_delay = publish_delay <= 0 ? 1 : publish_delay; //判断型语句，如果publish_delay<=0,则将publish_delay置为0,否则不变
 
-    ros::Publisher pub_laser_cloud = n.advertise<sensor_msgs::PointCloud2>("/velodyne_points", 2);
+    ros::Publisher pub_laser_cloud = n.advertise<sensor_msgs::PointCloud2>("/velodyne_points", 2); //初始化点云发布话题，话题名为/velodyne_points. 发布频率为2
 
-    image_transport::ImageTransport it(n);
-    image_transport::Publisher pub_image_left = it.advertise("/image_left", 2);
-    image_transport::Publisher pub_image_right = it.advertise("/image_right", 2);
+    image_transport::ImageTransport it(n);//初始化图像发布节点ImageTransport,在ROS的cpp中，一般使用ImageTransport进行图像的发布
+    image_transport::Publisher pub_image_left = it.advertise("/image_left", 2); //初始化左侧图像话题
+    image_transport::Publisher pub_image_right = it.advertise("/image_right", 2); //初始化右侧图像话题
 
-    ros::Publisher pubOdomGT = n.advertise<nav_msgs::Odometry> ("/odometry_gt", 5);
-    nav_msgs::Odometry odomGT;
-    odomGT.header.frame_id = "/camera_init";
+    ros::Publisher pubOdomGT = n.advertise<nav_msgs::Odometry> ("/odometry_gt", 5); //初始化里程计真值
+    nav_msgs::Odometry odomGT; //初始化真值变量类型
+    odomGT.header.frame_id = "/camera_init"; //进行frameid和子frameid的定义
     odomGT.child_frame_id = "/ground_truth";
 
-    ros::Publisher pubPathGT = n.advertise<nav_msgs::Path> ("/path_gt", 5);
-    nav_msgs::Path pathGT;
-    pathGT.header.frame_id = "/camera_init";
+    ros::Publisher pubPathGT = n.advertise<nav_msgs::Path> ("/path_gt", 5); //定义轨迹发布话题
+    nav_msgs::Path pathGT; //初始化Path pathGT的数据类型
+    pathGT.header.frame_id = "/camera_init"; //定义frame id
 
-    std::string timestamp_path = "sequences/" + sequence_number + "/times.txt";
-    std::ifstream timestamp_file(dataset_folder + timestamp_path, std::ifstream::in);
+    std::string timestamp_path = "sequences/" + sequence_number + "/times.txt"; //读取时间戳文件路径
+    std::ifstream timestamp_file(dataset_folder + timestamp_path, std::ifstream::in); //读取文件
 
-    std::string ground_truth_path = "results/" + sequence_number + ".txt";
-    std::ifstream ground_truth_file(dataset_folder + ground_truth_path, std::ifstream::in);
+    std::string ground_truth_path = "results/" + sequence_number + ".txt";//初始化地面真值信息的数据类型
+    std::ifstream ground_truth_file(dataset_folder + ground_truth_path, std::ifstream::in); //读取地面真值消息
 
-    rosbag::Bag bag_out;
+    rosbag::Bag bag_out; //初始化rosbag类型
     if (to_bag)
         bag_out.open(output_bag_file, rosbag::bagmode::Write);
     
-    Eigen::Matrix3d R_transform;
-    R_transform << 0, 0, 1, -1, 0, 0, 0, -1, 0;
-    Eigen::Quaterniond q_transform(R_transform);
+    Eigen::Matrix3d R_transform; //初始化旋转矩阵 Rotation matrix 类型
+    R_transform << 0, 0, 1, -1, 0, 0, 0, -1, 0; //赋值
+    Eigen::Quaterniond q_transform(R_transform); //？这里不知道含义
 
     std::string line;
     std::size_t line_num = 0;
 
-    ros::Rate r(10.0 / publish_delay);
+    ros::Rate r(10.0 / publish_delay); //根据publish_delay设置发布频率
     while (std::getline(timestamp_file, line) && ros::ok())
     {
-        float timestamp = stof(line);
-        std::stringstream left_image_path, right_image_path;
-        left_image_path << dataset_folder << "sequences/" + sequence_number + "/image_0/" << std::setfill('0') << std::setw(6) << line_num << ".png";
-        cv::Mat left_image = cv::imread(left_image_path.str(), CV_LOAD_IMAGE_GRAYSCALE);
+        float timestamp = stof(line); //将string类型转化为 float类型， stof() string->float 
+        std::stringstream left_image_path, right_image_path; 
+        left_image_path << dataset_folder << "sequences/" + sequence_number + "/image_0/" << std::setfill('0') << std::setw(6) << line_num << ".png"; //读取图片
+        cv::Mat left_image = cv::imread(left_image_path.str(), CV_LOAD_IMAGE_GRAYSCALE); //转化为灰度图像
         right_image_path << dataset_folder << "sequences/" + sequence_number + "/image_1/" << std::setfill('0') << std::setw(6) << line_num << ".png";
         cv::Mat right_image = cv::imread(left_image_path.str(), CV_LOAD_IMAGE_GRAYSCALE);
 
-        std::getline(ground_truth_file, line);
+        std::getline(ground_truth_file, line); //获取地面真值
         std::stringstream pose_stream(line);
         std::string s;
-        Eigen::Matrix<double, 3, 4> gt_pose;
+        Eigen::Matrix<double, 3, 4> gt_pose; //初始化gt_pose
         for (std::size_t i = 0; i < 3; ++i)
         {
             for (std::size_t j = 0; j < 4; ++j)

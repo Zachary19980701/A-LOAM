@@ -1,3 +1,6 @@
+ENV http_proxy http://127.0.0.1:{8888}
+ENV https_proxy http://127.0.0.1:{8888}
+
 FROM ros:kinetic-perception
 
 ENV CERES_VERSION="1.12.0"
@@ -21,6 +24,7 @@ RUN if [ "x$(nproc)" = "x1" ] ; then export USE_PROC=1 ; else export USE_PROC=$(
     rm -rf /var/lib/apt/lists/* && \
     # Build and install Ceres
     git clone https://ceres-solver.googlesource.com/ceres-solver && \
+    #git clone  https://github.com/ceres-solver/ceres-solver.git && \
     cd ceres-solver && \
     git checkout tags/${CERES_VERSION} && \
     mkdir build && cd build && \
@@ -58,3 +62,4 @@ RUN catkin config \
     catkin build && \
     sed -i '/exec "$@"/i \
             source "/root/catkin_ws/devel/setup.bash"' /ros_entrypoint.sh
+
