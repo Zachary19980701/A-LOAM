@@ -9,14 +9,14 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-struct LidarEdgeFactor
+struct LidarEdgeFactor //定义Ceres求解类 边缘求解类
 {
 	LidarEdgeFactor(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_a_,
 					Eigen::Vector3d last_point_b_, double s_)
-		: curr_point(curr_point_), last_point_a(last_point_a_), last_point_b(last_point_b_), s(s_) {}
+		: curr_point(curr_point_), last_point_a(last_point_a_), last_point_b(last_point_b_), s(s_) {} //变量重命名
 
 	template <typename T>
-	bool operator()(const T *q, const T *t, T *residual) const
+	bool operator()(const T *q, const T *t, T *residual) const //定义一个两维的优化求解参数快，q是旋转矩阵，T是平移矩阵，residual是残差
 	{
 
 		Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())};
@@ -45,8 +45,8 @@ struct LidarEdgeFactor
 	static ceres::CostFunction *Create(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
 									   const Eigen::Vector3d last_point_b_, const double s_)
 	{
-		return (new ceres::AutoDiffCostFunction<
-				LidarEdgeFactor, 3, 4, 3>(
+		return (new ceres::AutoDiffCostFunction< //声明一个自动求解类
+				LidarEdgeFactor, 3, 4, 3>( //参顺含义：边缘约束类名，残差维数（这里残差是三维），参数块1（旋转矩阵维度是4，四元数），参数块2（平移矩阵维度）
 			new LidarEdgeFactor(curr_point_, last_point_a_, last_point_b_, s_)));
 	}
 
