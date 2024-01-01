@@ -110,8 +110,11 @@ std::queue<sensor_msgs::PointCloud2ConstPtr> fullPointsBuf;
 std::mutex mBuf;
 
 // undistort lidar point
+//所有点补偿到起始时刻
 void TransformToStart(PointType const *const pi, PointType *const po)
 {
+    //这里是一个匀速模型，对于车辆等场景，匀速模型是ok的。
+    //但是对于手持设备，匀速模型一般来说不能够适应
     //interpolation ratio
     double s;
     if (DISTORTION)
@@ -119,7 +122,10 @@ void TransformToStart(PointType const *const pi, PointType *const po)
     else
         s = 1.0;
     //s = 1;
+    //分为两个模型，平移和旋转
+    //这里是旋转模型
     Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
+    //平移部分
     Eigen::Vector3d t_point_last = s * t_last_curr;
     Eigen::Vector3d point(pi->x, pi->y, pi->z);
     Eigen::Vector3d un_point = q_point_last * point + t_point_last;
@@ -131,7 +137,7 @@ void TransformToStart(PointType const *const pi, PointType *const po)
 }
 
 // transform all lidar points to the start of the next frame
-
+//所有点补偿到结束时刻
 void TransformToEnd(PointType const *const pi, PointType *const po)
 {
     // undistort point first
@@ -149,6 +155,10 @@ void TransformToEnd(PointType const *const pi, PointType *const po)
     po->intensity = int(pi->intensity);
 }
 
+
+
+//回调函数
+//将之前提取的点云的各种点的话题进行订阅并且放到对应的buffer里面
 void laserCloudSharpHandler(const sensor_msgs::PointCloud2ConstPtr &cornerPointsSharp2)
 {
     mBuf.lock();
@@ -193,7 +203,7 @@ int main(int argc, char **argv)
     nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
 
     printf("Mapping %d Hz \n", 10 / skipFrameNum);
-
+    //订阅点云
     ros::Subscriber subCornerPointsSharp = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_sharp", 100, laserCloudSharpHandler);
 
     ros::Subscriber subCornerPointsLessSharp = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_less_sharp", 100, laserCloudLessSharpHandler);
@@ -219,20 +229,22 @@ int main(int argc, char **argv)
     int frameCount = 0;
     ros::Rate rate(100);
 
-    while (ros::ok())
+    while (ros::ok()) //如果ROS存在，这个里程计循环就会一直执行
     {
-        ros::spinOnce();
+        ros::spinOnce(); //触发一次回调，队列中存在多个消息，使用spinonce只会处理一次。只有配合while函数来处理
 
         if (!cornerSharpBuf.empty() && !cornerLessSharpBuf.empty() &&
             !surfFlatBuf.empty() && !surfLessFlatBuf.empty() &&
-            !fullPointsBuf.empty())
+            !fullPointsBuf.empty()) //首先确保每一个队列非空，保证数据的有效性
         {
+            //读取每个话题的头文件，读取时间戳
             timeCornerPointsSharp = cornerSharpBuf.front()->header.stamp.toSec();
             timeCornerPointsLessSharp = cornerLessSharpBuf.front()->header.stamp.toSec();
             timeSurfPointsFlat = surfFlatBuf.front()->header.stamp.toSec();
             timeSurfPointsLessFlat = surfLessFlatBuf.front()->header.stamp.toSec();
             timeLaserCloudFullRes = fullPointsBuf.front()->header.stamp.toSec();
-
+            
+            //判断时间戳是否是同一个时间戳，只有同一个时间戳才能向下运行，否则触发错误会话
             if (timeCornerPointsSharp != timeLaserCloudFullRes ||
                 timeCornerPointsLessSharp != timeLaserCloudFullRes ||
                 timeSurfPointsFlat != timeLaserCloudFullRes ||
@@ -242,6 +254,7 @@ int main(int argc, char **argv)
                 ROS_BREAK();
             }
 
+            //将ROS消息转化为PCL消息
             mBuf.lock();
             cornerPointsSharp->clear();
             pcl::fromROSMsg(*cornerSharpBuf.front(), *cornerPointsSharp);
@@ -266,25 +279,29 @@ int main(int argc, char **argv)
 
             TicToc t_whole;
             // initializing
-            if (!systemInited)
+            if (!systemInited) //判断系统是否初始化
             {
-                systemInited = true;
+                systemInited = true;  //初始化指针
                 std::cout << "Initialization finished \n";
             }
-            else
+            else //laser里程计求解
             {
+
+                //明显的角点和面点
                 int cornerPointsSharpNum = cornerPointsSharp->points.size();
                 int surfPointsFlatNum = surfPointsFlat->points.size();
 
-                TicToc t_opt;
+                TicToc t_opt;、
+                //两次迭代求解
+                //核函数用来筛出外点outliner
                 for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter)
                 {
                     corner_correspondence = 0;
                     plane_correspondence = 0;
 
                     //ceres::LossFunction *loss_function = NULL;
-                    ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
-                    ceres::LocalParameterization *q_parameterization =
+                    ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1); //使用的是huber核函数
+                    ceres::LocalParameterization *q_parameterization = //q_parameterization 四元数的加法
                         new ceres::EigenQuaternionParameterization();
                     ceres::Problem::Options problem_options;
 
