@@ -113,10 +113,10 @@ struct LidarPlaneNormFactor
 	template <typename T>
 	bool operator()(const T *q, const T *t, T *residual) const
 	{
-		Eigen::Quaternion<T> q_w_curr{q[3], q[0], q[1], q[2]};
-		Eigen::Matrix<T, 3, 1> t_w_curr{t[0], t[1], t[2]};
-		Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())};
-		Eigen::Matrix<T, 3, 1> point_w;
+		Eigen::Quaternion<T> q_w_curr{q[3], q[0], q[1], q[2]}; //旋转矩阵，使用四元数来表示
+		Eigen::Matrix<T, 3, 1> t_w_curr{t[0], t[1], t[2]}; //平移矩阵
+		Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())}; //当前点的坐标
+		Eigen::Matrix<T, 3, 1> point_w; //下一点的坐标
 		point_w = q_w_curr * cp + t_w_curr;
 
 		Eigen::Matrix<T, 3, 1> norm(T(plane_unit_norm.x()), T(plane_unit_norm.y()), T(plane_unit_norm.z()));

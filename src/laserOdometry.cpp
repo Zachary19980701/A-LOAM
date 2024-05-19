@@ -291,7 +291,7 @@ int main(int argc, char **argv)
                 int cornerPointsSharpNum = cornerPointsSharp->points.size();
                 int surfPointsFlatNum = surfPointsFlat->points.size();
 
-                TicToc t_opt;、
+                TicToc t_opt;
                 //两次迭代求解
                 //核函数用来筛出外点outliner
                 for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter)
@@ -315,9 +315,10 @@ int main(int argc, char **argv)
 
                     TicToc t_data;
                     // find correspondence for corner features
-                    for (int i = 0; i < cornerPointsSharpNum; ++i)
+                    //角点之间的联系
+                    for (int i = 0; i < cornerPointsSharpNum; ++i) //对所有角点进行循环
                     {
-                        TransformToStart(&(cornerPointsSharp->points[i]), &pointSel);
+                        TransformToStart(&(cornerPointsSharp->points[i]), &pointSel); //将点序列转移到起始点
                         kdtreeCornerLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
                         int closestPointInd = -1, minPointInd2 = -1;

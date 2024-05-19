@@ -114,9 +114,9 @@ int main(int argc, char** argv)
             }
         }
 
-        //使用相机的变换矩阵对相机的图像参数进行标定
+        //将gt_pose从camera坐标系转化到lidar坐标系
         Eigen::Quaterniond q_w_i(gt_pose.topLeftCorner<3, 3>());
-        Eigen::Quaterniond q = q_transform * q_w_i;//获取图像的最终变换矩阵
+        Eigen::Quaterniond q = q_transform * q_w_i * q_transform.inverse();//p' = qpq^-1
         q.normalize();//进行归一化
         Eigen::Vector3d t = q_transform * gt_pose.topRightCorner<3, 1>(); //进行平移
 

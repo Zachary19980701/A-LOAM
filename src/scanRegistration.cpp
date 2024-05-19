@@ -299,7 +299,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) //
         起始点和结束点附近计算曲率不是非常方便，因此抛弃掉起始点和终止点附近5个点的数据，不去计算这个曲率
         */
         scanStartInd[i] = laserCloud->size() + 5;
-        *laserCloud += laserCloudScans[i];
+        *laserCloud += laserCloudScans[i]; //将之前的点云添加到lasercloud中
         scanEndInd[i] = laserCloud->size() - 6;
         //使用scanStarted和scanStarted来存贮起始点和结束点的ID
     }
